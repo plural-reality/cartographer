@@ -207,6 +207,43 @@ const REPORT_STATUS_META: Record<
 type ReportTemplateType = "empathy" | "logical" | "psychopath" | "freeform";
 type ReportModeType = "auto" | "custom";
 
+// 判別共用体型：freeform以外はpromptフィールドを持たない
+type ConfirmedReportStyle =
+  | { type: "auto" }
+  | { type: "empathy" }
+  | { type: "logical" }
+  | { type: "psychopath" }
+  | { type: "freeform"; prompt: string };
+
+// ConfirmedReportStyleからプロンプト文字列を取得するヘルパー
+function getStylePrompt(style: ConfirmedReportStyle): string {
+  if (style.type === "freeform") {
+    return style.prompt;
+  }
+  if (style.type === "auto") {
+    return "";
+  }
+  // empathy, logical, psychopathはREPORT_TEMPLATESから導出
+  const template = REPORT_TEMPLATES.find((t) => t.id === style.type);
+  return template?.prompt ?? "";
+}
+
+// ConfirmedReportStyleからスタイル名を取得するヘルパー
+function getStyleLabel(style: ConfirmedReportStyle): string {
+  switch (style.type) {
+    case "auto":
+      return "スタンダード";
+    case "empathy":
+      return "共感重視";
+    case "logical":
+      return "論理重視";
+    case "psychopath":
+      return "サイコパスモード";
+    case "freeform":
+      return "自由記述";
+  }
+}
+
 interface ReportTemplate {
   id: ReportTemplateType;
   name: string;
@@ -454,9 +491,7 @@ export default function AdminPage({
   const [selectedTemplate, setSelectedTemplate] =
     useState<ReportTemplateType | null>(null);
   const [customPrompt, setCustomPrompt] = useState("");
-  const [selectedReportStyle, setSelectedReportStyle] = useState<
-    "auto" | ReportTemplateType
-  >("auto");
+  const [confirmedStyle, setConfirmedStyle] = useState<ConfirmedReportStyle>({ type: "auto" });
 
   const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
   const [showResponseLog, setShowResponseLog] = useState(false);
@@ -881,36 +916,25 @@ export default function AdminPage({
   };
 
   const handleConfirmTemplate = () => {
-    // 「決定」ボタンを押した時にピッカーに反映
-    if (selectedTemplate) {
-      setSelectedReportStyle(selectedTemplate);
+    // 「決定」ボタンを押した時にスタイルを確定
+    if (selectedTemplate === "freeform") {
+      setConfirmedStyle({ type: "freeform", prompt: customPrompt });
+    } else if (selectedTemplate) {
+      // empathy, logical, psychopathはtypeだけで確定（promptは導出）
+      setConfirmedStyle({ type: selectedTemplate });
     } else {
       // selectedTemplate が null の場合はスタンダード
-      setSelectedReportStyle("auto");
+      setConfirmedStyle({ type: "auto" });
     }
     handleCloseReportModal();
   };
 
-  const handleGenerateReport = async (
-    templateId: ReportTemplateType | null,
-  ) => {
+  const handleGenerateReport = async () => {
     if (!userId) return;
     if (creatingReport) return;
 
-    let finalPrompt = "";
-
-    if (templateId === null) {
-      // スタンダード（標準レポート）
-      finalPrompt = "";
-    } else if (templateId === "freeform") {
-      // 自由記述
-      finalPrompt = customPrompt;
-    } else {
-      // テンプレート指定
-      const template = REPORT_TEMPLATES.find((t) => t.id === templateId);
-      if (!template) return;
-      finalPrompt = template.prompt;
-    }
+    // getStylePromptでプロンプトを導出
+    const finalPrompt = getStylePrompt(confirmedStyle);
 
     try {
       setCreatingReport(true);
@@ -1258,18 +1282,7 @@ export default function AdminPage({
                     <Button
                       type="button"
                       size="lg"
-                      onClick={() => {
-                        if (selectedReportStyle === "auto") {
-                          handleGenerateReport(null);
-                        } else if (selectedReportStyle === "freeform") {
-                          // 自由記述の場合はモーダルを開く
-                          setShowReportModal(true);
-                          setReportMode("custom");
-                          setSelectedTemplate("freeform");
-                        } else {
-                          handleGenerateReport(selectedReportStyle);
-                        }
-                      }}
+                      onClick={() => handleGenerateReport()}
                       disabled={creatingReport}
                       isLoading={creatingReport}
                       className="min-h-[52px] w-full justify-center gap-3 rounded-2xl px-5 pl-32 pr-32 text-center text-base shadow-lg shadow-slate-900/10 sm:text-lg"
@@ -1287,32 +1300,34 @@ export default function AdminPage({
                       onClick={() => {
                         setShowReportModal(true);
                         setReportMode("custom");
+                        // 現在のスタイルに応じてモーダルの選択状態を初期化
+                        if (confirmedStyle.type === "auto") {
+                          setSelectedTemplate(null);
+                          setCustomPrompt("");
+                        } else if (confirmedStyle.type === "freeform") {
+                          setSelectedTemplate("freeform");
+                          // 自由記述の場合は保存済みのプロンプトを復元
+                          setCustomPrompt(confirmedStyle.prompt);
+                        } else {
+                          setSelectedTemplate(confirmedStyle.type);
+                          setCustomPrompt("");
+                        }
                       }}
                       disabled={creatingReport}
                       className="absolute right-3 top-1/2 inline-flex h-10 -translate-y-1/2 items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-xs font-semibold text-white/90 shadow-sm shadow-black/10 backdrop-blur transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-70"
                     >
-                      {selectedReportStyle === "auto" ? (
+                      {confirmedStyle.type === "auto" ? (
                         <FileText className="h-4 w-4 text-blue-600" />
-                      ) : selectedReportStyle === "empathy" ? (
+                      ) : confirmedStyle.type === "empathy" ? (
                         <Heart className="h-4 w-4 text-pink-600" />
-                      ) : selectedReportStyle === "logical" ? (
+                      ) : confirmedStyle.type === "logical" ? (
                         <Brain className="h-4 w-4 text-blue-600" />
-                      ) : selectedReportStyle === "psychopath" ? (
+                      ) : confirmedStyle.type === "psychopath" ? (
                         <Zap className="h-4 w-4 text-purple-600" />
                       ) : (
                         <Settings className="h-4 w-4 text-slate-600" />
                       )}
-                      <span>
-                        {selectedReportStyle === "auto"
-                          ? "スタンダード"
-                          : selectedReportStyle === "empathy"
-                            ? "共感重視"
-                            : selectedReportStyle === "logical"
-                              ? "論理重視"
-                              : selectedReportStyle === "psychopath"
-                                ? "サイコパスモード"
-                                : "自由記述"}
-                      </span>
+                      <span>{getStyleLabel(confirmedStyle)}</span>
                       <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
                     </button>
                   </div>
@@ -1678,13 +1693,13 @@ export default function AdminPage({
                       </div>
                     </div>
 
-                    {selectedReport.requestMarkdown ? (
+                    {getStylePrompt(confirmedStyle) ? (
                       <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 text-sm text-indigo-900">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-400">
                           レポート生成のリクエスト
                         </p>
                         <p className="mt-1 whitespace-pre-wrap leading-relaxed">
-                          {selectedReport.requestMarkdown}
+                          {getStylePrompt(confirmedStyle)}
                         </p>
                       </div>
                     ) : null}

@@ -32,6 +32,7 @@ cp .env.example .env.local
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`（サーバー専用。クライアントへ公開しない）
+- `DATABASE_URL`
 
 ## 3. Supabase スキーマを適用する
 `supabase/schema.sql` を、接続先の Postgres に流し込みます。Nix シェルには `psql` が入っています。

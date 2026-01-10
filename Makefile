@@ -18,14 +18,23 @@ supabase-up:
 supabase-down:
 	cd infra/supabase/bundle && docker compose down
 
-# Supabase のスキーマをローカル DB に適用
-db-schema:
-	cat supabase/schemas/public.sql | docker compose -f infra/supabase/bundle/docker-compose.yml exec -T db psql -U postgres -d postgres
+db-reset-local:
+	PGSSLMODE=disable supabase db reset --db-url "postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:54322/postgres"
 
-# ローカル DB をリセットしてマイグレーションを適用
-db-reset:
-	docker exec supabase-db psql -U postgres -d postgres -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO postgres;"
-	cat supabase/migrations/*.sql | docker exec -i supabase-db psql -U postgres -d postgres
+
+ifneq (,$(wildcard ./.env))
+	include .env
+	export
+endif
+
+# TODO: test this script
+# ifneq (,$(wildcard ./.env))
+#     include .env
+#     export
+# endif
+
+# db-reset-remote:
+# 	supabase db reset --db-url $(DATABASE_URL)
 
 # Supabase の初期セットアップ (何度実行しても安全な想定)
 supabase-init: supabase-fetch supabase-up db-schema
